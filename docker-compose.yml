@@ -1,0 +1,24 @@
+# Dependencias locales para desarrollar ms-campuslab-audit.
+# Uso: docker compose up -d
+# Solo levanta PostgreSQL; Kafka y RabbitMQ viven en el repo /infra.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: audit-db
+    environment:
+      POSTGRES_DB: audit_db
+      POSTGRES_USER: audit
+      POSTGRES_PASSWORD: audit
+    ports:
+      - "${AUDIT_DB_PORT:-5436}:5432"   # 5433 bookings, 5434 catalog, 5435 report
+    volumes:
+      - audit_pgdata:/var/lib/postgresql/data   # persiste la data entre reinicios
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U audit -d audit_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  audit_pgdata:

@@ -244,3 +244,52 @@ src/
 
 **Última actualización:** *(actualizar en cada cambio relevante)*
 # ms-campuslab-audit
+
+---
+
+## 🧾 Cómo funciona este servicio
+
+Registra **quién hizo qué sobre una reserva, cuándo y desde dónde** y lo expone en modo solo lectura.
+
+```
+ms-campuslab-bookings ──(evento)──▶ Kafka  bookings.events ──▶ ms-campuslab-audit ──▶ PostgreSQL (audit_db)
+                                         └─ si el mensaje es inválido o falla ──▶ bookings.events.DLT
+Frontend ─▶ BFF GET /api/audit ─▶ ms-campuslab-audit GET /api/audit/events   (solo ADMIN y AUDITOR)
+```
+
+- **Consumidor** (`messaging/consumer`): lee `bookings.events`, lo convierte en un hecho auditable y lo guarda de forma
+  **idempotente** (`event_id` único: un mensaje repetido no se guarda dos veces).
+- **Errores**: un mensaje ilegible o incompleto va **directo** a `bookings.events.DLT` (reintentarlo no lo arregla); una falla
+  transitoria (p. ej. la base de datos) se reintenta con backoff exponencial y luego va a la DLT. Nunca bloquea los mensajes siguientes.
+- **Quién y desde dónde**: `ms-campuslab-bookings` agrega al evento el correo, nombre y rol del JWT y la IP del cliente
+  (`X-Forwarded-For`, que el BFF reenvía desde API Management).
+
+### API (solo lectura, roles ADMIN y AUDITOR)
+
+| Verbo | Ruta | Qué devuelve |
+|---|---|---|
+| `GET` | `/api/audit/events?type=&actor=&bookingId=&from=&to=&limit=` | Hechos del más reciente al más antiguo (límite 200 por defecto, máx. 1000) |
+| `GET` | `/api/audit/bookings/{bookingId}/events` | Timeline de una reserva, del más antiguo al más reciente |
+
+`type` es el código del evento (`BOOKING_CREATED`, `BOOKING_APPROVED`, `BOOKING_PREP_STARTED`, `BOOKING_IN_USE`, `BOOKING_RETURNED`,
+`BOOKING_CANCELLED`); `actor` busca texto en el correo o el nombre; `from` (inclusivo) y `to` (exclusivo) son instantes ISO-8601.
+
+### Ejecutar en local
+
+```bash
+docker compose up -d                                   # PostgreSQL audit-db en el puerto 5436
+# Kafka: campuslab-infra/kafka  ->  docker compose -f compose.dev.yml up -d
+TENANT_ID=<tenant de Azure AD> mvn spring-boot:run     # puerto 8086
+```
+
+| Variable | Por defecto | Uso |
+|---|---|---|
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | `localhost` / `5436` / `audit_db` / `audit` / `audit` | Base de datos |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Kafka |
+| `TENANT_ID` | `changeme` | Tenant de Azure AD que emite el JWT |
+| `SERVER_PORT` | `8086` | Puerto HTTP |
+
+### Tests
+
+`mvn test`. Las pruebas unitarias y de capa web no necesitan nada; `AuditBrokerFlowTest` prueba el flujo completo contra Kafka y
+PostgreSQL reales (tópico y grupo únicos por ejecución) y se omite solo si no están en `localhost:9092` / `localhost:5436`.

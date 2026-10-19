@@ -1,0 +1,53 @@
+# Configuración del microservicio de auditoría
+spring:
+  application:
+    name: ms-campuslab-audit
+
+  # --- Base de datos PostgreSQL (docker compose up -d en este repo: audit-db en el puerto 5436) ---
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5436}/${DB_NAME:audit_db}
+    username: ${DB_USER:audit}
+    password: ${DB_PASSWORD:audit}
+
+  jpa:
+    hibernate:
+      # Flyway crea las tablas; Hibernate solo verifica que coincidan con las entidades
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  # --- Kafka: consumimos bookings.events (fuente de verdad de los cambios de una reserva) ---
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: audit-group
+      # Si el grupo es nuevo, se leen los eventos desde el principio: no se pierde historial
+      auto-offset-reset: earliest
+
+  # --- Seguridad: validación del JWT emitido por Azure AD ---
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://login.microsoftonline.com/${TENANT_ID:changeme}/v2.0
+
+campuslab:
+  audit:
+    # Tópico del que se consumen los eventos (el productor es ms-campuslab-bookings)
+    topic: bookings.events
+    # Reintentos del consumidor antes de mandar el mensaje a <tópico>.DLT
+    retry:
+      max-attempts: 3
+      initial-interval-ms: 1000
+      multiplier: 2.0
+
+# Puerto del servicio (BFF 8080, bookings 8081, catalog 8082, report 8083, notify 8084, mq-admin 8085)
+server:
+  port: ${SERVER_PORT:8086}
+
+logging:
+  level:
+    org.campuslab.audit: INFO
