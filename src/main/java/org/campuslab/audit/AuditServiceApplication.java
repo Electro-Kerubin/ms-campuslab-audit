@@ -2,7 +2,6 @@ package org.campuslab.audit;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.ComponentScan;
 
 /**
  * Audit Service Application
@@ -10,14 +9,14 @@ import org.springframework.context.annotation.ComponentScan;
  * Punto de entrada para el microservicio de auditoría.
  *
  * Responsabilidades:
- * - Consumir eventos de Kafka (bookings.events, audit.timeline)
- * - Persistir timeline de eventos en PostgreSQL
- * - Exponer endpoints de lectura para consultar historial de una reserva
- * - Filtrar por usuario, fechas y tipo de evento
- * - Garantizar trazabilidad completa (quién, qué, cuándo, desde dónde)
+ * - Consumir los eventos de reserva de Kafka (bookings.events)
+ * - Persistir el timeline de eventos en PostgreSQL, sin duplicados (idempotente)
+ * - Exponer endpoints de solo lectura para consultar el historial (/api/audit/**)
+ * - Garantizar trazabilidad: quién, qué, cuándo y desde dónde
  */
+// Sin @ComponentScan explícito: @SpringBootApplication ya escanea este paquete y el scan manual
+// rompería los filtros de los tests de slice (@WebMvcTest).
 @SpringBootApplication
-@ComponentScan(basePackages = "org.campuslab.audit")
 public class AuditServiceApplication {
 
     public static void main(String[] args) {
